@@ -10,7 +10,7 @@ import time
 # Render-nu vendi Flask
 app = Flask('')
 @app.route('/')
-def home(): return "⚡ 100k Scanner is Online!"
+def home(): return "⚡100k Scanner is Online!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
