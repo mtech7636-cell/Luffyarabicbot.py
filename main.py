@@ -10,9 +10,11 @@ import re
 # --- SERVER ---
 app = Flask('')
 @app.route('/')
-def home(): return "🔥 CPMEGY TURBO MASTER IS ACTIVE!"
+def home(): 
+    return "🔥 CPMEGY TURBO MASTER IS ACTIVE!"
 
 def run_flask():
+    # Render-ൽ പോർട്ട് ശരിയായി കണക്ട് ചെയ്യാൻ ഇത് നിർബന്ധമാണ്
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -103,7 +105,7 @@ def run_recovery(message):
         bot.send_message(cid, f"🏁 Done! Total Found: {found}")
     Thread(target=task).start()
 
-# --- BULK CHANGE (3 DIGIT & ALERT) ---
+# --- BULK CHANGE ---
 def handle_bulk_file(message):
     if not message.document: return
     file_info = bot.get_file(message.document.file_id)
@@ -132,25 +134,16 @@ def run_bulk_process(message):
                 oe, op = line.strip().rsplit(":", 1)
                 token = login_acc(oe.strip(), op.strip(), "CPM2")
                 if token:
-                    # 3 Digit Random ID
                     rand_id = str(int(time.time() * 1000))[-3:]
                     new_e = data['new_fmt'].replace("{}", rand_id) if "{}" in data['new_fmt'] else f"{rand_id}{data['new_fmt']}"
-                    
                     if update_acc(token, new_e, new_pwd, "CPM2"):
                         success.append(f"{new_e}:{new_pwd}")
-                        # Detailed Alert
-                        alert = (f"✅ **SUCCESS!**\n\n"
-                                 f"📧 **Old:** `{oe.strip()}`\n"
-                                 f"📧 **New:** `{new_e}`\n"
-                                 f"🔑 **Pass:** `{new_pwd}`")
-                        bot.send_message(cid, alert, parse_mode="Markdown")
+                        bot.send_message(cid, f"✅ **SUCCESS!**\n\n📧 **Old:** `{oe.strip()}`\n📧 **New:** `{new_e}`\n🔑 **Pass:** `{new_pwd}`", parse_mode="Markdown")
                 time.sleep(0.5)
-            
             if success:
                 res_file = f"res_{cid}.txt"
                 with open(res_file, "w") as f: f.write("\n".join(success))
                 bot.send_document(cid, open(res_file, "rb"), caption="🏁 Bulk Finished!")
-            else: bot.send_message(cid, "❌ No updates made.")
         except Exception as e: bot.send_message(cid, f"⚠️ Error: {str(e)}")
     Thread(target=process).start()
 
@@ -164,10 +157,13 @@ def handle_single_change(message):
         else: bot.send_message(message.chat.id, "❌ Failed.")
     except: bot.send_message(message.chat.id, "⚠️ Format Error.")
 
+# --- MAIN RUNNER ---
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
-    while True:
-        try:
-            bot.infinity_polling(timeout=15)
-        except:
-            time.sleep(5) go
+    # Flask സെർവർ ഒരു സെപ്പറേറ്റ് ത്രെഡിൽ റൺ ചെയ്യുന്നു
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+    
+    # Render-ൽ ക്രാഷ് ആവാതിരിക്കാൻ infinity_polling ഉപയോഗിക്കുന്നു
+    print("🚀 Bot is starting...")
+    bot.infinity_polling(skip_pending=True)
