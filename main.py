@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 # --- RENDER WEB SERVER ---
 app = Flask('')
 @app.route('/')
-def home(): return "⚡ SCANNER WITH PROGRESS ACTIVE"
+def home(): return "⚡SCANNER WITH PROGRESS ACTIVE"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
