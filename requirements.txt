@@ -1,6 +1,3 @@
 pyTelegramBotAPI
 requests
 flask
-aiohttp
-aiohttp_retry
-
