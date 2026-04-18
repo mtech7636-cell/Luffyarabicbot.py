@@ -1,4 +1,6 @@
 pyTelegramBotAPI
-requests 
-flask 
-gunicorn
+requests
+flask
+aiohttp
+aiohttp_retry
+
